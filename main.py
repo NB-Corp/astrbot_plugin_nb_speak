@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import Any, List
 
 try:
@@ -13,7 +12,21 @@ try:
     from astrbot.api.star import Context, Star
     import astrbot.api.message_components as Comp
 except ModuleNotFoundError:  # Standalone unit-test fallback when AstrBot host is not installed
-    logger = logging.getLogger("astrbot_plugin_nb_speak")
+
+    class _FallbackLogger:
+        def debug(self, *_args: Any, **_kwargs: Any) -> None:
+            pass
+
+        def info(self, *_args: Any, **_kwargs: Any) -> None:
+            pass
+
+        def warning(self, *_args: Any, **_kwargs: Any) -> None:
+            pass
+
+        def error(self, *_args: Any, **_kwargs: Any) -> None:
+            pass
+
+    logger = _FallbackLogger()
     AstrBotConfig = dict  # type: ignore[misc,assignment]
     AstrMessageEvent = Any  # type: ignore[misc,assignment]
     ProviderRequest = Any  # type: ignore[misc,assignment]
@@ -87,7 +100,7 @@ except ImportError:
         synthesize_openai_wav,
     )
 
-HEADER_COMPONENT_NAMES = frozenset({"Reply", "At"})
+HEADER_COMPONENT_NAMES = frozenset({"Reply", "At", "AtAll"})
 
 
 def _component_kind_name(comp: Any) -> str:
@@ -201,12 +214,12 @@ class NbSpeakPlugin(Star):
         media_comps: List[Any] = []
         plain_chunks: List[str] = []
 
-        for idx, comp in enumerate(original_chain):
+        for comp in original_chain:
             if _is_plain_component(comp):
                 text_val = getattr(comp, "text", "")
                 if text_val:
                     plain_chunks.append(str(text_val))
-            elif idx < 2 and not plain_chunks and _is_header_component(comp):
+            elif not plain_chunks and not media_comps and _is_header_component(comp):
                 header_comps.append(comp)
             else:
                 media_comps.append(comp)
@@ -242,6 +255,7 @@ class NbSpeakPlugin(Star):
                     api_key=self._cfg_str("tts_api_key", ""),
                     model=self._cfg_str("tts_model", "tts-1"),
                     voice=self._cfg_str("tts_voice", "alloy"),
+                    timeout_sec=self._cfg_float("tts_timeout_sec", 4.0),
                 )
                 if wav_path:
                     voice_comp = Comp.Record(file=wav_path, url=wav_path)
